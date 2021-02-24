@@ -1,7 +1,7 @@
 /*
  * mm.c
  *
- * Name: [FILL IN]
+ * Name: [Julien Rovera]
  *
  * NOTE TO STUDENTS: Replace this header comment with your own header
  * comment that gives a high level description of your solution.
@@ -49,7 +49,7 @@
 
 /* What is the correct alignment? */
 #define ALIGNMENT 16
-
+void * earliest_block;
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
@@ -61,7 +61,18 @@ static size_t align(size_t x)
  */
 bool mm_init(void)
 {
-    /* IMPLEMENT THIS */
+    /* IMPLEMENT THIS 
+    void* heap_lo;*/ 
+    printf ("before mem_init\n");
+    mem_init();
+    earliest_block = mem_heap_lo();
+    printf ("after mem_init\n");
+    printf ("earliest block: %p\n", earliest_block);
+    printf ("heap size: %zu\n", mem_heapsize());
+    /*printf ("CALLING mm_init\n");
+    heap_lo = mem_heap_hi();
+    printf ("size of the heap: %zu\n", mem_heapsize());
+    printf ("last heap address: %p\n", heap_lo);*/
     return true;
 }
 
@@ -70,8 +81,21 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
+    void * return_pointer;  
+    return_pointer = NULL;
     /* IMPLEMENT THIS */
-    return NULL;
+    printf ("entering malloc\n");
+    printf ("size: %zu\n", size);
+    printf ("size of size_t: %zu\n",sizeof(size_t));
+    mem_sbrk(16);
+    mem_write(earliest_block, size+16, 8);
+    printf ("from heap reading: %d\n",(int) mem_read(earliest_block, 8));
+    mem_sbrk((intptr_t)align(size));
+    printf ("size of the heap: %zu\n", mem_heapsize());
+    return_pointer = (char *)earliest_block + 16;
+    earliest_block = (char *) earliest_block + 16 + align(size);
+    printf ("return_pointer: %p\n", return_pointer);
+    return return_pointer;    
 }
 
 /*
@@ -80,6 +104,8 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
     /* IMPLEMENT THIS */
+    printf ("free heap reading: %d\n",(int) mem_read((char *) ptr - 16, 8));
+    assert(1 == -1);
     return;
 }
 
