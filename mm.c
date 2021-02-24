@@ -49,7 +49,8 @@
 
 /* What is the correct alignment? */
 #define ALIGNMENT 16
-void * earliest_block;
+void * find_free_block(size_t size);
+void * first_block;
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
@@ -61,13 +62,18 @@ static size_t align(size_t x)
  */
 bool mm_init(void)
 {
+    void * earliest_block;
     /* IMPLEMENT THIS 
     void* heap_lo;*/ 
     printf ("before mem_init\n");
     mem_init();
     earliest_block = mem_heap_lo();
+    mem_sbrk(24);
+    mem_write(earliest_block, 0,8);
+    mem_write((char *) earliest_block + 8,(uint64_t) earliest_block, 8);
+    first_block = earliest_block;
     printf ("after mem_init\n");
-    printf ("earliest block: %p\n", earliest_block);
+    printf ("first_block: %p\n", first_block);
     printf ("heap size: %zu\n", mem_heapsize());
     /*printf ("CALLING mm_init\n");
     heap_lo = mem_heap_hi();
@@ -81,21 +87,23 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
-    void * return_pointer;  
-    return_pointer = NULL;
-    /* IMPLEMENT THIS */
-    printf ("entering malloc\n");
-    printf ("size: %zu\n", size);
-    printf ("size of size_t: %zu\n",sizeof(size_t));
-    mem_sbrk(16);
-    mem_write(earliest_block, size+16, 8);
-    printf ("from heap reading: %d\n",(int) mem_read(earliest_block, 8));
-    mem_sbrk((intptr_t)align(size));
-    printf ("size of the heap: %zu\n", mem_heapsize());
-    return_pointer = (char *)earliest_block + 16;
-    earliest_block = (char *) earliest_block + 16 + align(size);
-    printf ("return_pointer: %p\n", return_pointer);
-    return return_pointer;    
+    printf ("size: %d\n", (int) size);
+    void * block;
+    size_t block_size;
+    block = find_free_block(size);
+    block_size = mem_read(block, 8);
+    
+/* remember, you need to create a new block with size and pointer data in the first 16 bytes in the size = 0 case*/
+    if(block_size == 0)
+    {
+	mem_sbrk((intptr_t)align(size) + 8);
+  	mem_write(block, align(size) + 32, 8);
+  	first_block =(char*) block + align(size) + 33;	
+    }
+    printf ("fist block after malloc: %p\n", first_block);
+    printf ("size plus extra 32 bits: %d\n", (int)align(size) + 32);
+    assert (1 == -1);
+    return (void *)((char *) block + 24);
 }
 
 /*
@@ -162,4 +170,29 @@ bool mm_checkheap(int lineno)
     /* IMPLEMENT THIS */
 #endif /* DEBUG */
     return true;
+}
+
+void * find_free_block(size_t size)
+{
+    int found_block = 0;
+    void * current_address = first_block;
+    void * next_address;
+    size_t block_size;
+    while(found_block == 0)
+    {
+	block_size = mem_read(current_address, 8);    	
+	printf ("first block size: %d\n", (int)block_size); 
+ 	if(block_size >= size)
+	{
+		printf ("current_address returned case 1: %p\n", current_address);
+		return current_address;		
+	}
+	next_address = (void *) mem_read((char*)current_address + 8 , 8);	
+        if(next_address == current_address)
+	{
+		printf ("current_address returned case 2: %p\n", current_address);
+		return current_address;
+	}
+    }
+    return NULL;
 }
