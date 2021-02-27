@@ -1,12 +1,15 @@
 /*
  * mm.c
  *
- * Name: [Julien Rovera]
  *
  * NOTE TO STUDENTS: Replace this header comment with your own header
  * comment that gives a high level description of your solution.
  * Also, read malloclab.pdf carefully and in its entirety before beginning.
  *
+ * Name: Nahom Regassa, Julien Rovera
+ *
+ * First Naive implementation based inspired by the implicit list allocator
+ * in the text book
  */
 #include <assert.h>
 #include <stdio.h>
@@ -55,14 +58,23 @@ void remove_from_free_list(void* block, size_t size);
 void print_free_list();
 void * first_block;
 int number_of_calls;
+//#define 
+
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
+#define SIZE_T_SIZE (align(sizeof(size_t)))
+//#define SIZE_PTR(p)  ((size_t*)(((char*)(p)) - SIZE_T_SIZE))
+static size_t* SIZE_PTR(void *p){
+    return ((size_t*)(((char*)(p)) - SIZE_T_SIZE));
+}
+
 
 /*
  * Initialize: returns false on error, true on success.
+ * Doesn't do anything for now
  */
 bool mm_init(void)
 {
@@ -118,10 +130,12 @@ void* malloc(size_t size)
     printf ("size plus extra 32 bits: %d\n", (int)align(size) + 32);
     assert (1 == -1);
     return (void *)((char *) block + 24);*/
+
 }
 
 /*
- * free
+ * free, doest nothing
+ * just for error
  */
 void free(void* ptr)
 {
@@ -151,7 +165,8 @@ void free(void* ptr)
 }
 
 /*
- * realloc
+ * realloc mallocs a new block on the heap
+ * and frees up the old block
  */
 void* realloc(void* oldptr, size_t size)
 {
