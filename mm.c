@@ -1,12 +1,10 @@
 /*
  * mm.c
  *
- * Name: [FILL IN]
+ * Name: Nahom Regassa, Julien Rovera
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- * Also, read malloclab.pdf carefully and in its entirety before beginning.
- *
+ * First Naive implementation based inspired by the implicit list allocator
+ * in the text book
  */
 #include <assert.h>
 #include <stdio.h>
@@ -49,15 +47,23 @@
 
 /* What is the correct alignment? */
 #define ALIGNMENT 16
+//#define 
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
+#define SIZE_T_SIZE (align(sizeof(size_t)))
+//#define SIZE_PTR(p)  ((size_t*)(((char*)(p)) - SIZE_T_SIZE))
+static size_t* SIZE_PTR(void *p){
+    return ((size_t*)(((char*)(p)) - SIZE_T_SIZE));
+}
+
 
 /*
  * Initialize: returns false on error, true on success.
+ * Doesn't do anything for now
  */
 bool mm_init(void)
 {
@@ -70,26 +76,68 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
-    /* IMPLEMENT THIS */
+  // add space in the heap as needed
+  int aligned_size = align(size + SIZE_T_SIZE);
+  unsigned char *p = mem_sbrk(aligned_size);
+  // if failed return null
+  if ((long)p == -1)
     return NULL;
+  else {
+      //update the pointer
+    p += SIZE_T_SIZE;
+    *SIZE_PTR(p) = size;
+    return p;
+    return NULL;
+  }
 }
 
 /*
- * free
+ * free, doest nothing
+ * just for error
  */
 void free(void* ptr)
 {
     /* IMPLEMENT THIS */
+    ptr = ptr;
     return;
 }
 
 /*
- * realloc
+ * realloc mallocs a new block on the heap
+ * and frees up the old block
  */
 void* realloc(void* oldptr, size_t size)
 {
-    /* IMPLEMENT THIS */
-    return NULL;
+    void *newptr;
+    size_t oldsize;
+    
+    // if the previous ptr is zero, just malloc new size
+    if(oldptr == NULL) {
+        return malloc(size);
+    }
+    // if size is zero just free old pointer
+    if(size == 0) {
+        free(oldptr);
+        return 0;
+    }
+    // else malloc new
+    newptr = malloc(size);
+
+    // don't copy anything new if 
+    // malloc fails
+    if(newptr == NULL) {
+        return 0;
+    }
+    // if successfull copy the new data
+    // get the size of the old pointer
+    oldsize = *SIZE_PTR(oldptr);
+    if(size < oldsize){ 
+        oldsize = size;
+    }
+    // copy old data and free the old pointer
+    memcpy(newptr, oldptr, oldsize);
+    free(oldptr);
+    return newptr;
 }
 
 /*
