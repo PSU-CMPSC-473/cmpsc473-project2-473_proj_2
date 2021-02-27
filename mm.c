@@ -155,8 +155,28 @@ void free(void* ptr)
  */
 void* realloc(void* oldptr, size_t size)
 {
+	void * new_block;
+	size_t old_size;
+	size_t smaller_size;
+	uint64_t i;
+	old_size = mem_read((char*)oldptr-16, 8)-32;
 	free(oldptr);
-	return malloc(size);
+	new_block = malloc(size);
+	
+	if (old_size < size)
+	{
+		smaller_size = old_size;
+	}
+	else
+	{
+		smaller_size = size;
+	}
+
+	for(i = 0; i < smaller_size; i ++)
+	{
+		mem_write((char*) new_block+i, mem_read((char*)oldptr+i, 1), 1);
+	}
+	return new_block;
 }
 
 /*
@@ -227,7 +247,6 @@ void * find_free_block(size_t size)
 		}
 		next_block = (void*)mem_read((char*)next_block+8, 8); 
 	}
-
 	return create_new_block(size); 
 /*
     int found_block = 0;
@@ -294,7 +313,6 @@ void remove_from_free_list(void* block, size_t size)
 }
 void print_free_list()
 {
-	return;
 	void* next_block_2 = first_block;
 	int loops = 0;
 	while (next_block_2 != 0&&loops <= 100)
