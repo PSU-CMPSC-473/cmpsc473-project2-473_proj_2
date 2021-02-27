@@ -52,7 +52,9 @@
 void * find_free_block(size_t size);
 void * create_new_block(size_t size);
 void remove_from_free_list(void* block, size_t size);
+void print_free_list();
 void * first_block;
+int number_of_calls;
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
@@ -64,9 +66,12 @@ static size_t align(size_t x)
  */
 bool mm_init(void)
 {
-	mem_init();
+/*	printf ("called mm_init\n");*/
+/*	mem_init();*/
+	mem_reset_brk();
 	first_block = 0;
 	return true;
+	number_of_calls = 5;
     /* IMPLEMENT THIS 
     void* heap_lo; 
     printf ("before mem_init\n");
@@ -91,9 +96,9 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
-	printf ("size form malloc: %d\n", (int) size);
+	number_of_calls ++;
 	void * block;
-	block = find_free_block((int)size);
+	block = find_free_block(size);
 	return block;
 /*
     printf ("size: %d\n", (int) size);
@@ -120,21 +125,27 @@ void* malloc(size_t size)
  */
 void free(void* ptr)
 {
+	number_of_calls ++;
 	size_t block_size = (size_t)mem_read((char *) ptr - 16, 8);	
 	void * block_starting_address = (char *) ptr - 16;
 	void * block_ending_address = (char *) block_starting_address + block_size;
 	void * old_first_block = first_block;
-	printf ("free heap reading: %d\n",(int) block_size);
+	size_t old_first_block_size;
+	size_t new_first_block_size;	
 	if(old_first_block == 0)
 	{
-		printf ("first time freeing\n");
 		mem_write((char*)block_ending_address - 16, 0, 8);	
 		mem_write((char*)block_starting_address + 8, 0, 8);
 		first_block = block_starting_address;
 	}
 	else
 	{
-		printf ("second etc. time freeing\n");
+		first_block = block_starting_address;
+		mem_write((char*) block_starting_address + 8, (uint64_t)old_first_block, 8);
+		old_first_block_size = (size_t)mem_read(old_first_block, 8);
+		new_first_block_size = (size_t)mem_read(block_starting_address,8);
+		mem_write((char*) old_first_block + old_first_block_size - 16, (uint64_t)first_block, 8);	
+		mem_write((char*) block_starting_address + new_first_block_size - 16, (uint64_t)0,8);
 	}
 	return;
 }
@@ -144,8 +155,8 @@ void free(void* ptr)
  */
 void* realloc(void* oldptr, size_t size)
 {
-    /* IMPLEMENT THIS */
-    return NULL;
+	free(oldptr);
+	return malloc(size);
 }
 
 /*
@@ -196,21 +207,25 @@ bool mm_checkheap(int lineno)
 
 void * find_free_block(size_t size)
 {
+	int loops = 0;
 	void * next_block;
 	size_t block_size;
 	next_block = first_block;
-	printf ("first_block: %p\n", next_block);
 	while(next_block != 0)
 	{
-		printf ("looking for a free block\n");
+		loops ++;
+		if(loops < 0)
+		{
+			return NULL;
+		}
 		block_size = (size_t)mem_read((char *) next_block, 8);
-		printf ("block_size: %d\n", (int) block_size);
 		if(block_size -32 >= size)
 		{
-			printf ("found a big enough block\n");
+			
 			remove_from_free_list(next_block, block_size);
 			return (void *)((char*) next_block + 16);	
 		}
+		next_block = (void*)mem_read((char*)next_block+8, 8); 
 	}
 
 	return create_new_block(size); 
@@ -242,7 +257,6 @@ void * create_new_block(size_t size)
 {
 	size_t block_size = align(size) + 32;
 	void * block_starting_address;
-	printf ("in create new block\n");
 	block_starting_address = mem_sbrk((intptr_t)block_size);
 	mem_write(block_starting_address, (uint64_t)block_size, 8);
 	mem_write((char*) block_starting_address + (block_size - 8), (uint64_t)block_size, 8);		
@@ -251,18 +265,41 @@ void * create_new_block(size_t size)
 
 void remove_from_free_list(void* block, size_t size)
 {
-	printf ("removing a free block\n");
 	void * next_block;
 	void * previous_block;
+	size_t next_block_size;
 	next_block = (void*)mem_read((char*) block + 8,8); 
 	previous_block = (void*)mem_read((char*)block + (size - 16), 8);
-	printf ("next_block: %p\n", next_block); 	
-	printf ("previous_block: %p\n", previous_block);
 	/*first block in the list*/
-	if (previous_block == 0)
+	if (previous_block == 0 && next_block == 0)
 	{
 		first_block = next_block;
-		printf ("first_block: %p\n", first_block);
 	}
-	assert (1 == -1);
+	if(previous_block != 0 && next_block == 0)
+	{
+		mem_write((char*)previous_block+8, 0, 8);			
+	}	
+	if(previous_block == 0 && next_block!= 0)
+	{	
+		first_block = next_block;
+		next_block_size = (size_t)mem_read(next_block,8);
+		mem_write((char*)next_block + next_block_size-16, 0, 8);
+	}
+	if(previous_block != 0 && next_block != 0)
+	{
+		mem_write((char*) previous_block + 8, (uint64_t)next_block, 8);
+		next_block_size = (size_t)mem_read(next_block,8);
+		mem_write((char*)next_block + next_block_size-16, (uint64_t)previous_block, 8);
+	}
+}
+void print_free_list()
+{
+	return;
+	void* next_block_2 = first_block;
+	int loops = 0;
+	while (next_block_2 != 0&&loops <= 100)
+	{
+		printf ("next_block: %p\n", next_block_2);
+		next_block_2 = (void*)mem_read((char*) next_block_2+ 8, 8);		
+	}
 }
