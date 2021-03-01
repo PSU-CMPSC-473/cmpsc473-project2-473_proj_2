@@ -78,29 +78,10 @@ static size_t* SIZE_PTR(void *p){
  */
 bool mm_init(void)
 {
-/*	printf ("called mm_init\n");*/
-/*	mem_init();*/
+
 	mem_reset_brk();
 	first_block = 0;
 	return true;
-	number_of_calls = 5;
-    /* IMPLEMENT THIS 
-    void* heap_lo; 
-    printf ("before mem_init\n");
-    mem_init();
-    earliest_block = mem_heap_lo();
-    mem_sbrk(24);
-    mem_write(earliest_block, 0,8);
-    mem_write((char *) earliest_block + 8,(uint64_t) earliest_block, 8);
-    first_block = earliest_block;
-    printf ("after mem_init\n");
-    printf ("first_block: %p\n", first_block);
-    printf ("heap size: %zu\n", mem_heapsize());
-    printf ("CALLING mm_init\n");
-    heap_lo = mem_heap_hi();
-    printf ("size of the heap: %zu\n", mem_heapsize());
-    printf ("last heap address: %p\n", heap_lo);
-    return true;*/
 }
 
 /*
@@ -112,40 +93,21 @@ void* malloc(size_t size)
 	void * block;
 	block = find_free_block(size);
 	return block;
-/*
-    printf ("size: %d\n", (int) size);
-    void * block;
-    size_t block_size;
-    block = find_free_block(size);
-    block_size = mem_read(block, 8);
-    
- remember, you need to create a new block with size and pointer data in the first 16 bytes in the size = 0 case
-    if(block_size == 0)
-    {
-	mem_sbrk((intptr_t)align(size) + 8);
-  	mem_write(block, align(size) + 32, 8);
-  	first_block =(char*) block + align(size) + 33;	
-    }
-    printf ("fist block after malloc: %p\n", first_block);
-    printf ("size plus extra 32 bits: %d\n", (int)align(size) + 32);
-    assert (1 == -1);
-    return (void *)((char *) block + 24);*/
-
 }
 
-/*
- * free, doest nothing
- * just for error
- */
+
 void free(void* ptr)
 {
 	number_of_calls ++;
 	size_t block_size = (size_t)mem_read((char *) ptr - 16, 8);	
+	size_t real_block_size = block_size &-2;
 	void * block_starting_address = (char *) ptr - 16;
-	void * block_ending_address = (char *) block_starting_address + block_size;
+	void * block_ending_address = (char *) block_starting_address + real_block_size;
 	void * old_first_block = first_block;
 	size_t old_first_block_size;
 	size_t new_first_block_size;	
+	mem_write(block_starting_address, (uint64_t)real_block_size,8);
+	mem_write((char*) block_starting_address + real_block_size - 8, (uint64_t)real_block_size, 8);
 	if(old_first_block == 0)
 	{
 		mem_write((char*)block_ending_address - 16, 0, 8);	
@@ -256,35 +218,12 @@ void * find_free_block(size_t size)
 		block_size = (size_t)mem_read((char *) next_block, 8);
 		if(block_size -32 >= size)
 		{
-			
 			remove_from_free_list(next_block, block_size);
 			return (void *)((char*) next_block + 16);	
 		}
 		next_block = (void*)mem_read((char*)next_block+8, 8); 
 	}
 	return create_new_block(size); 
-/*
-    int found_block = 0;
-    void * current_address = first_block;
-    void * next_address;
-    size_t block_size;
-    while(found_block == 0)
-    {
-	block_size = mem_read(current_address, 8);    	
-	printf ("first block size: %d\n", (int)block_size); 
- 	if(block_size >= size)
-	{
-		printf ("current_address returned case 1: %p\n", current_address);
-		return current_address;		
-	}
-	next_address = (void *) mem_read((char*)current_address + 8 , 8);	
-        if(next_address == current_address)
-	{
-		printf ("current_address returned case 2: %p\n", current_address);
-		return current_address;
-	}
-    }
-    return NULL;*/
 }
 
 void * create_new_block(size_t size)
@@ -292,8 +231,8 @@ void * create_new_block(size_t size)
 	size_t block_size = align(size) + 32;
 	void * block_starting_address;
 	block_starting_address = mem_sbrk((intptr_t)block_size);
-	mem_write(block_starting_address, (uint64_t)block_size, 8);
-	mem_write((char*) block_starting_address + (block_size - 8), (uint64_t)block_size, 8);		
+	mem_write(block_starting_address, (uint64_t)block_size | 1, 8);
+	mem_write((char*) block_starting_address + (block_size - 8), (uint64_t)block_size | 1, 8);		
 	return (char*) block_starting_address + 16;	
 }
 
@@ -302,7 +241,7 @@ void remove_from_free_list(void* block, size_t size)
 	void * next_block;
 	void * previous_block;
 	size_t next_block_size;
-	next_block = (void*)mem_read((char*) block + 8,8); 
+	next_block = (void*)mem_read((char*) block + 8,8); 	
 	previous_block = (void*)mem_read((char*)block + (size - 16), 8);
 	/*first block in the list*/
 	if (previous_block == 0 && next_block == 0)
@@ -332,7 +271,6 @@ void print_free_list()
 	int loops = 0;
 	while (next_block_2 != 0&&loops <= 100)
 	{
-		printf ("next_block: %p\n", next_block_2);
 		next_block_2 = (void*)mem_read((char*) next_block_2+ 8, 8);		
 	}
 }
