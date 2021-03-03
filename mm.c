@@ -56,6 +56,7 @@ void * find_free_block(size_t size);
 void * create_new_block(size_t size);
 void remove_from_free_list(void* block, size_t size, size_t reqested_size);
 size_t coalesce(void * ptr, size_t size);
+size_t coalesce_previous_block(void * ptr, size_t size, void ** address_pointer);
 void split_block(void* block, size_t block_size, size_t requested_size);
 void print_free_list();
 void * first_block;
@@ -103,7 +104,9 @@ void free(void* ptr)
 	number_of_calls ++;
 	size_t block_size = (size_t)mem_read((char *) ptr - 16, 8);	
 	void * block_starting_address = (char *) ptr - 16;
+	void ** bsa_ptr = &block_starting_address;
 	size_t real_block_size = coalesce(block_starting_address, block_size);	
+	real_block_size = coalesce_previous_block(block_starting_address, real_block_size, bsa_ptr);
 	void * block_ending_address = (char *) block_starting_address + real_block_size;
 	void * old_first_block = first_block;
 	size_t old_first_block_size;
@@ -135,13 +138,18 @@ void free(void* ptr)
 void* realloc(void* oldptr, size_t size)
 {
 	void * new_block;
+	void * buffer;
 	size_t old_size;
 	size_t smaller_size;
 	uint64_t i;
 	old_size = mem_read((char*)oldptr-16, 8)-32;
+	buffer = malloc(old_size);
+	for(i = 0; i < old_size; i ++)
+	{
+		mem_write((char*)buffer+i, (uint64_t)mem_read((char*)oldptr + i, 1), 1);
+	}
 	free(oldptr);
 	new_block = malloc(size);
-	
 	if (old_size < size)
 	{
 		smaller_size = old_size;
@@ -150,11 +158,11 @@ void* realloc(void* oldptr, size_t size)
 	{
 		smaller_size = size;
 	}
-
 	for(i = 0; i < smaller_size; i ++)
 	{
-		mem_write((char*) new_block+i, mem_read((char*)oldptr+i, 1), 1);
+		mem_write((char*)new_block + i, (uint64_t)mem_read((char*)buffer + i, 1), 1);
 	}
+	free(buffer);
 	return new_block;
 }
 
@@ -253,6 +261,7 @@ void remove_from_free_list(void* block, size_t size, size_t requested_size)
 		next_block = (void*)mem_read((char*) block + 8,8); 	
 		previous_block = (void*)mem_read((char*)block + (size - 16), 8);
 		mem_write(block, (uint64_t)(size | 1), 8);
+		mem_write((char*)block + (size)-8, (uint64_t)(size|1), 8);
 		/*first block in the list*/
 		if (previous_block == 0 && next_block == 0)
 		{
@@ -306,16 +315,53 @@ size_t coalesce(void * ptr, size_t size)
 			mem_write((char*)next_block_back_ptr + 8, (uint64_t)next_block_fwrd_ptr, 8);
 		}
 		if(next_block_fwrd_ptr != 0)
-		{
-			next_block_fwrd_ptr_size = (size_t)mem_read(next_block_fwrd_ptr, 8);	
+		{				
+			next_block_fwrd_ptr_size = (size_t)mem_read(next_block_fwrd_ptr, 8);
 			mem_write((char*)next_block_fwrd_ptr + next_block_fwrd_ptr_size -16, (uint64_t)next_block_back_ptr, 8);
 		}
 		combined_size = (size&-2) + next_block_size;
-		mem_write(ptr, (uint64_t)combined_size, 8);
-		mem_write((char*) ptr + combined_size - 8, (uint64_t) combined_size, 8);	
 		return combined_size;
 	}
 	return size&-2;
+}
+size_t coalesce_previous_block(void * ptr, size_t size, void ** address_pointer)
+{
+	size_t previous_block_size;
+	size_t previous_block_fwrd_ptr_size;
+	size_t combined_size;
+	void * previous_block_address;
+	void * previous_block_fwrd_ptr;
+	void * previous_block_back_ptr;
+	if((char*)ptr - 8 < (char*)mem_heap_lo())
+	{
+		return size;
+	}
+	previous_block_size = mem_read((char*)ptr-8, 8);
+	if((previous_block_size &1) != 1)
+	{
+		previous_block_address = (char*)ptr - previous_block_size;
+		previous_block_fwrd_ptr = (void*)mem_read((char*)previous_block_address + 8, 8);
+		previous_block_back_ptr = (void*)mem_read((char*)ptr - 16, 8);
+		*address_pointer = previous_block_address;
+		if(previous_block_back_ptr == 0)
+		{
+			first_block = previous_block_fwrd_ptr;
+		}
+		else
+		{
+			mem_write((char*)previous_block_back_ptr + 8, (uint64_t)previous_block_fwrd_ptr, 8);
+		}
+		if(previous_block_fwrd_ptr != 0)
+		{	
+			previous_block_fwrd_ptr_size = (size_t)mem_read(previous_block_fwrd_ptr, 8);
+			mem_write((char*)previous_block_fwrd_ptr + previous_block_fwrd_ptr_size - 16, (uint64_t)previous_block_back_ptr, 8);
+		}
+		combined_size = size + previous_block_size;
+		mem_write(previous_block_address, (uint64_t)combined_size, 8);
+		mem_write((char*)previous_block_address + combined_size - 8, (uint64_t)combined_size, 8);
+		return combined_size;
+	}
+	return size;
 }
 void split_block(void * block, size_t block_size, size_t requested_size)
 {
