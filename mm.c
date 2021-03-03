@@ -138,31 +138,24 @@ void free(void* ptr)
 void* realloc(void* oldptr, size_t size)
 {
 	void * new_block;
-	void * buffer;
 	size_t old_size;
 	size_t smaller_size;
 	uint64_t i;
 	old_size = mem_read((char*)oldptr-16, 8)-32;
-	buffer = malloc(old_size);
-	for(i = 0; i < old_size; i ++)
-	{
-		mem_write((char*)buffer+i, (uint64_t)mem_read((char*)oldptr + i, 1), 1);
-	}
-	free(oldptr);
 	new_block = malloc(size);
-	if (old_size < size)
-	{
-		smaller_size = old_size;
-	}
-	else
+	if(size < old_size)
 	{
 		smaller_size = size;
 	}
+	else
+	{
+		smaller_size = old_size;
+	}
 	for(i = 0; i < smaller_size; i ++)
 	{
-		mem_write((char*)new_block + i, (uint64_t)mem_read((char*)buffer + i, 1), 1);
+		mem_write((char*)new_block+i, (uint64_t)mem_read((char*)oldptr + i, 1), 1);
 	}
-	free(buffer);
+	free(oldptr);
 	return new_block;
 }
 
@@ -217,6 +210,9 @@ void * find_free_block(size_t size)
 	int loops = 0;
 	void * next_block;
 	size_t block_size;
+	uint64_t best_difference = 2147483647;
+	void * best_block = NULL;
+	size_t best_block_size;
 	next_block = first_block;
 	while(next_block != 0)
 	{
@@ -227,10 +223,20 @@ void * find_free_block(size_t size)
 		block_size = (size_t)mem_read((char *) next_block, 8);
 		if(block_size -32 >= size)
 		{
-			remove_from_free_list(next_block, block_size, align(size));
-			return (void *)((char*) next_block + 16);	
+			if((block_size - size) < best_difference)
+			{
+				best_difference = block_size - size;
+				best_block = next_block;
+				best_block_size = block_size;
+			}		
 		}
 		next_block = (void*)mem_read((char*)next_block+8, 8); 
+	}
+	if(best_block != 0)
+	{
+		remove_from_free_list(best_block, best_block_size, align(size));
+		return (void *)((char*) best_block + 16);
+
 	}
 	return create_new_block(size); 
 }
