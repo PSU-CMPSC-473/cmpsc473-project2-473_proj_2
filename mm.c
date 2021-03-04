@@ -83,6 +83,7 @@ bool mm_init(void)
 {
 	number_of_calls = 0;
 	mem_reset_brk();
+	mem_sbrk(8);
 	first_block = 0;
 	return true;
 }
@@ -102,8 +103,8 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
 	number_of_calls ++;
-	size_t block_size = (size_t)mem_read((char *) ptr - 16, 8);	
-	void * block_starting_address = (char *) ptr - 16;
+	size_t block_size = (size_t)mem_read((char *) ptr - 8, 8);	
+	void * block_starting_address = (char *) ptr - 8;
 	void ** bsa_ptr = &block_starting_address;
 	size_t real_block_size = coalesce(block_starting_address, block_size);	
 	real_block_size = coalesce_previous_block(block_starting_address, real_block_size, bsa_ptr);
@@ -141,7 +142,7 @@ void* realloc(void* oldptr, size_t size)
 	size_t old_size;
 	size_t smaller_size;
 	uint64_t i;
-	old_size = mem_read((char*)oldptr-16, 8)-32;
+	old_size = mem_read((char*)oldptr-8, 8)-16;
 	new_block = malloc(size);
 	if(size < old_size)
 	{
@@ -210,7 +211,7 @@ void * find_free_block(size_t size)
 	int loops = 0;
 	void * next_block;
 	size_t block_size;
-	uint64_t best_difference = 2147483647;
+	uint64_t best_difference = 214748364;
 	void * best_block = NULL;
 	size_t best_block_size;
 	next_block = first_block;
@@ -221,7 +222,7 @@ void * find_free_block(size_t size)
 			return NULL;
 		}
 		block_size = (size_t)mem_read((char *) next_block, 8);
-		if(block_size -32 >= size)
+		if(block_size -16 >= size)
 		{
 			if((block_size - size) < best_difference)
 			{
@@ -235,7 +236,7 @@ void * find_free_block(size_t size)
 	if(best_block != 0)
 	{
 		remove_from_free_list(best_block, best_block_size, align(size));
-		return (void *)((char*) best_block + 16);
+		return (void *)((char*) best_block + 8);
 
 	}
 	return create_new_block(size); 
@@ -243,14 +244,14 @@ void * find_free_block(size_t size)
 
 void * create_new_block(size_t size)
 {
-	size_t block_size = align(size) + 32;
+	size_t block_size = align(size) + 16;
 	void * block_starting_address;
 	/*size_t written_size;*/
 	block_starting_address = mem_sbrk((intptr_t)block_size);
 	mem_write(block_starting_address, (uint64_t)block_size | 1, 8);
 	mem_write((char*) block_starting_address + (block_size - 8), (uint64_t)block_size | 1, 8);		
 	/*written_size = (size_t)mem_read(block_starting_address, 8);*/
-	return (char*) block_starting_address + 16;	
+	return (char*) block_starting_address + 8;	
 }
 
 void remove_from_free_list(void* block, size_t size, size_t requested_size)
@@ -258,7 +259,8 @@ void remove_from_free_list(void* block, size_t size, size_t requested_size)
 	void * next_block;
 	void * previous_block;
 	size_t next_block_size;
-	if (size - (requested_size + 32) >= 48)
+
+	if (size - (requested_size + 16) >= 32)
 	{
 		split_block(block, size, requested_size);
 	}
@@ -338,7 +340,7 @@ size_t coalesce_previous_block(void * ptr, size_t size, void ** address_pointer)
 	void * previous_block_address;
 	void * previous_block_fwrd_ptr;
 	void * previous_block_back_ptr;
-	if((char*)ptr - 8 < (char*)mem_heap_lo())
+	if((char*)ptr - 8 < (char*)mem_heap_lo() + 8)
 	{
 		return size;
 	}
@@ -377,7 +379,7 @@ void split_block(void * block, size_t block_size, size_t requested_size)
 	void * fwrd_ptr = (void *)mem_read((char*)block+8,8);
 	void * back_ptr = (void *)mem_read((char*)block + block_size - 16, 8);
 	void * new_free_block;
-	size_t new_allocated_block_size = requested_size + 32;
+	size_t new_allocated_block_size = requested_size + 16;
 	size_t new_free_block_size = block_size - new_allocated_block_size;
  	size_t next_in_list_size;	
 	new_free_block = (char*)block + new_allocated_block_size;
