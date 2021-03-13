@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "mm.h"
 #include "memlib.h"
@@ -62,7 +63,7 @@ void * find_slab(size_t size);
 void * create_slab(size_t size);
 bool  free_slab(void* ptr);
 size_t find_list(void* ptr);
-#define NUM_FREE_LISTS 8
+#define NUM_FREE_LISTS 6
 #define NUM_SLAB_LISTS 2
 typedef struct root
 {
@@ -72,11 +73,17 @@ typedef struct root
 typedef struct slab_root
 {
 	void* first_slab;
-	int num_slabs;
+	void* last_freed;
 }slab_root;
 slab_root slab_lists[NUM_SLAB_LISTS];
 root root_list[NUM_FREE_LISTS];
 int number_of_ops;
+float average_malloc_time;
+clock_t average_free_time;
+clock_t total_m_time;
+clock_t total_f_time;
+int mallocs;
+int frees;
 //#define 
 
 /* rounds up to the nearest multiple of ALIGNMENT */
@@ -103,13 +110,14 @@ bool mm_init(void)
 	for(i = 0; i < NUM_SLAB_LISTS; i ++)
 	{
 		slab_lists[i].first_slab = 0;
-		slab_lists[i].num_slabs = 0;
+		slab_lists[i].last_freed = 0;
 	}
 	for(i = 0; i < NUM_FREE_LISTS; i ++)
 	{
 		root_list[i].max_size = 0;
 		root_list[i].first_block = 0;
 	}
+	total_m_time = 0;
 	return true;
 }
 
@@ -118,7 +126,10 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {	
+	/*clock_t start_time = clock()/CLOCKS_PER_SEC;
+	clock_t end_time;*/
 	number_of_ops ++;
+	mallocs ++;
 	/*void* longest_list_first_block;
 	void* shortest_list_first_block;
 	void* shortest_list_first_block2;
@@ -159,6 +170,14 @@ void* malloc(size_t size)
 	block = find_free_block(size);
 	/*printf ("\n\n\n");
 	mm_checkheap(149);*/	
+	/*end_time = clock()/CLOCKS_PER_SEC;
+	total_m_time += (end_time - start_time);
+	average_malloc_time = (float)total_m_time / (float)mallocs;
+	if(number_of_ops >= 67000)
+	{
+		printf ("total time in malloc: %f\n", (float)total_m_time);
+		printf ("average time per malloc: %f\n", (float)average_malloc_time);
+	}*/	
 	return block;
 }
 
@@ -210,12 +229,7 @@ void free(void* ptr)
 		mem_write((char*) old_first_block + old_first_block_size - 16, (uint64_t)root_list[c_list].first_block, 8);	
 		mem_write((char*) block_starting_address + new_first_block_size - 16, (uint64_t)0,8);
 	}
-	/*printf ("\n\n\n");
-	if(number_of_ops == 94827)
-	{
-		printf ("\n\n\n");
-		mm_checkheap(194);	
-	}*/
+	/*mm_checkheap(194);*/	
 	return;
 }
 
@@ -299,6 +313,8 @@ bool mm_checkheap(int lineno)
     /* IMPLEMENT THIS */
 #endif /* DEBUG */
 	void * starting_address = (char*)mem_heap_lo()+8;
+	int i;
+	void * free_block;
 	void * current_block;
 	size_t current_block_size= 0;
 	size_t free_size=0;
@@ -318,6 +334,27 @@ bool mm_checkheap(int lineno)
 		{
 			num_free_blocks ++;
 			free_size += current_block_size;
+			for(i = 0; i < NUM_FREE_LISTS; i ++)
+			{
+				free_block = root_list[i].first_block;
+				while(free_block != 0)
+				{
+					if(free_block == current_block)
+					{
+						i = 100;
+						break;
+					}
+					free_block = (void*)mem_read((char*)free_block + 8, 8);
+				}
+				if(i == 100){
+					break;
+				}
+			}
+			if(i != 100)
+			{
+				printf ("a free block: %p wasn't in the free list\n", current_block);			
+				assert(1 == -1);
+			}
 		}
 		else
 		{
@@ -331,11 +368,11 @@ bool mm_checkheap(int lineno)
 		}	
 		current_block = (char*)current_block + (current_block_size & -2);
 	}
-	printf ("total blocks: %d\n", num_blocks);
+	/*printf ("total blocks: %d\n", num_blocks);
 	printf ("free blocks: %d\n", num_free_blocks);
 	printf ("free bytes: %zu\n", free_size);
 	printf ("allocated bytes: %zu\n", allocated_size);
-	printf ("utilization: %5.2f\n",100.0 * (double)allocated_size /(free_size + allocated_size));
+	printf ("utilization: %5.2f\n",100.0 * (double)allocated_size /(free_size + allocated_size));*/
     	return true;
 }
 
@@ -351,13 +388,11 @@ void * find_free_block(size_t size)
 	int c_list = NUM_FREE_LISTS-1;
 	if(root_list[0].max_size == 0)
 	{	
-		root_list[0].max_size = 32;
-		root_list[1].max_size = 64;
-		root_list[2].max_size = 128;
-		root_list[3].max_size = 256;
-		root_list[4].max_size = 512;
-		root_list[5].max_size = 1014;
-		root_list[6].max_size = 2028;
+		root_list[0].max_size = 128;
+		root_list[1].max_size = 256;
+		root_list[2].max_size = 512;
+		root_list[3].max_size = 1024;
+		root_list[4].max_size = 2048;
 		/*root_list[0].max_size = 32;
 		root_list[1].max_size = 64;
 		root_list[2].max_size = 128;
@@ -475,7 +510,6 @@ void remove_from_free_list(void* block, size_t size, size_t requested_size, int 
 }
 size_t coalesce(void * ptr, size_t size)
 {
-	
 	void * next_block_address = (char*)ptr + (size&-2);
 	void * next_block_back_ptr;
 	void * next_block_fwrd_ptr;
@@ -604,6 +638,7 @@ void split_block(void * block, size_t block_size, size_t requested_size, int c_l
 void* find_slab(size_t size)
 {
 	void* slab = NULL;
+	void* checking_slab = NULL;
 	void* new_slab = NULL;
 	int list;
 	size_t slab_size;
@@ -611,6 +646,7 @@ void* find_slab(size_t size)
 	uint64_t bitmap;
 	uint64_t temp_bitmap;
 	int i;
+	int j;
 	int allocated;
 	if(size == 16)
 	{
@@ -625,31 +661,43 @@ void* find_slab(size_t size)
 		block_size = 32;
 	}
 	
-	slab = slab_lists[list].first_slab;	
+	slab = slab_lists[list].last_freed;	
 	if(slab != 0)
 	{	
-		while(slab != 0)
+		while(checking_slab != slab_lists[list].last_freed)
 		{
 			bitmap = mem_read(slab, 8);
 			if(bitmap != 0xffffffff)
 			{
-				for(i = 31; i >=1; i = i - 1)
+				for(i = 28; i >=0; i = i - 4)
 				{
-					allocated = (bitmap >> i) & 1;
-					if(allocated == 0)
+					if((bitmap >>i) != 0xf)
 					{
-						temp_bitmap = 1 << (i); 
-						bitmap = bitmap | temp_bitmap;
-						mem_write(slab, bitmap, 8);
-						return (char*)slab + 16 + (31 - i)*block_size;
+						for(j = i + 3; j >= i; j = j -1)
+						{
+							allocated = (bitmap >> j) & 1;
+							if(allocated == 0)
+							{
+								temp_bitmap = 1 << (j); 
+								bitmap = bitmap | temp_bitmap;
+								mem_write(slab, bitmap, 8);
+								return (char*)slab + 16 + (31 - j)*block_size;
+							}
+						}
 					}	
 				}
 			}
 			slab = (void*)mem_read((char*)slab + 8, 8);
+			if(slab == 0)
+			{
+				slab = slab_lists[list].first_slab;
+			}
+			checking_slab = slab;
 		}
 		new_slab = create_slab(slab_size);	
 		mem_write((char*)new_slab + 8, (uint64_t)slab_lists[list].first_slab, 8);
 		slab_lists[list].first_slab = new_slab;
+		slab_lists[list].last_freed = new_slab;
 		return new_slab+16;
 			
 	}
@@ -657,6 +705,7 @@ void* find_slab(size_t size)
 	{
 		new_slab = create_slab(slab_size);
 		slab_lists[list].first_slab = new_slab;
+		slab_lists[list].last_freed = new_slab;
 		return new_slab + 16;
 	}
 	return NULL;
@@ -682,7 +731,7 @@ bool free_slab(void* ptr)
 	size_t slab_size;
 	size_t block_size;
 	int i;
-	for(i = 0; i <2; i++)
+	for(i = 1; i >= 0; i= i -1)
 	{ 
 		prev_slab = 0;
 		if(i == 0)
@@ -713,7 +762,6 @@ bool free_slab(void* ptr)
 				bitmap = bitmap & temp_bitmap;	
 				/*printf ("not temp bitmap: %lx\n", temp_bitmap);
 				printf ("new bitmap: %lx\n", bitmap);*/
-				mem_write(slab, bitmap, 8);
 				if(bitmap == 0)
 				{
 					temp_slab = slab_lists[i].first_slab;
@@ -732,7 +780,11 @@ bool free_slab(void* ptr)
 					{
 						mem_write((char*)prev_slab + 8, (uint64_t)next_slab, 8);
 					}	
+					slab_lists[i].last_freed = slab_lists[i].first_slab;
+					return true;
 				}
+				mem_write(slab, bitmap, 8);
+				slab_lists[i].last_freed = slab;
 				return true;
 			}
 			else
