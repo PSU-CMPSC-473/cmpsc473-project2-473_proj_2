@@ -63,6 +63,11 @@ void * find_slab(size_t size);
 void * create_slab(size_t size);
 bool  free_slab(void* ptr);
 size_t find_list(void* ptr);
+bool add_slab_cache(void* ptr);
+bool search_slab_cache(void* ptr, uint64_t* return_array);
+bool remove_slab(void* ptr, void* slab, void* prev_slab, int i, size_t block_size, uint64_t cache_index);
+void remove_from_cache(uint64_t cache_index);
+void print_cache();
 #define NUM_FREE_LISTS 6
 #define NUM_SLAB_LISTS 2
 typedef struct root
@@ -84,6 +89,7 @@ clock_t total_m_time;
 clock_t total_f_time;
 int mallocs;
 int frees;
+int cache_adds;
 //#define 
 
 /* rounds up to the nearest multiple of ALIGNMENT */
@@ -105,7 +111,8 @@ static size_t* SIZE_PTR(void *p){
 bool mm_init(void)
 {
 	int i;
-	mem_sbrk(8);
+	mem_sbrk(168);
+	mem_memset(mem_heap_lo(), 0, 168);
 	number_of_ops = 0;
 	for(i = 0; i < NUM_SLAB_LISTS; i ++)
 	{
@@ -184,7 +191,7 @@ void* malloc(size_t size)
 
 void free(void* ptr)
 {
-	number_of_ops ++;
+	number_of_ops ++;	
 	if(slab_lists[0].first_slab != 0 || slab_lists[1].first_slab != 0)
 	{
 		if(free_slab(ptr))
@@ -193,7 +200,7 @@ void free(void* ptr)
 		}
 	}
 	size_t block_size = (size_t)mem_read((char *) ptr - 8, 8);	
-	void * block_starting_address = (char *) ptr - 8;
+	void * block_starting_address = (char*)ptr - 8;
 	void ** bsa_ptr = &block_starting_address;
 	size_t real_block_size = coalesce(block_starting_address, block_size);	
 	real_block_size = coalesce_previous_block(block_starting_address, real_block_size, bsa_ptr);
@@ -312,7 +319,7 @@ bool mm_checkheap(int lineno)
     /* Write code to check heap invariants here */
     /* IMPLEMENT THIS */
 #endif /* DEBUG */
-	void * starting_address = (char*)mem_heap_lo()+8;
+	void * starting_address = (char*)mem_heap_lo()+88;
 	int i;
 	void * free_block;
 	void * current_block;
@@ -352,7 +359,6 @@ bool mm_checkheap(int lineno)
 			}
 			if(i != 100)
 			{
-				printf ("a free block: %p wasn't in the free list\n", current_block);			
 				assert(1 == -1);
 			}
 		}
@@ -362,8 +368,6 @@ bool mm_checkheap(int lineno)
 		}
 		if(prev_is_free == 0 && is_free == 0)
 		{
-			printf ("two adjacent free blocks didn't coalesce\n");
-			printf ("current block size: %zu\n", current_block_size);
 			assert(1 == -1);
 		}	
 		current_block = (char*)current_block + (current_block_size & -2);
@@ -565,7 +569,7 @@ size_t coalesce_previous_block(void * ptr, size_t size, void ** address_pointer)
 	void * previous_block_back_ptr;
 	int i;
 	int c_list = NUM_FREE_LISTS-1;
-	if((char*)ptr - 8 < (char*)mem_heap_lo() + 8)
+	if((char*)ptr - 8 < (char*)mem_heap_lo() + 168)
 	{
 		return size;
 	}
@@ -682,6 +686,7 @@ void* find_slab(size_t size)
 								temp_bitmap = 1 << (j); 
 								bitmap = bitmap | temp_bitmap;
 								mem_write(slab, bitmap, 8);
+								add_slab_cache(slab);
 								return (char*)slab + 16 + (31 - j)*block_size;
 							}
 						}
@@ -699,7 +704,8 @@ void* find_slab(size_t size)
 		mem_write((char*)new_slab + 8, (uint64_t)slab_lists[list].first_slab, 8);
 		slab_lists[list].first_slab = new_slab;
 		slab_lists[list].last_freed = new_slab;
-		return new_slab+16;
+		add_slab_cache(new_slab);
+		return (void*)(char*)new_slab+16;
 			
 	}
 	else
@@ -707,7 +713,8 @@ void* find_slab(size_t size)
 		new_slab = create_slab(slab_size);
 		slab_lists[list].first_slab = new_slab;
 		slab_lists[list].last_freed = new_slab;
-		return new_slab + 16;
+		add_slab_cache(new_slab);
+		return (void*)(char*)new_slab + 16;
 	}
 	return NULL;
 }
@@ -723,17 +730,31 @@ bool free_slab(void* ptr)
 {
 	void* slab; 
 	void* prev_slab = NULL;
-	void* next_slab;
-	void* temp_slab;
-	void* other_temp_slab;
-	uint64_t slab_index = 0;
-	uint64_t bitmap= 0;
-	uint64_t temp_bitmap= 0;
 	size_t slab_size;
 	size_t block_size;
 	int i;
+	uint64_t return_array[3];
+
+	if(search_slab_cache(ptr, return_array) == true)
+	{	
+		slab = (void*)mem_read((char*)mem_heap_lo() + return_array[0] , 8);
+		i = return_array[1];
+		if(i == 0)
+		{
+			block_size = 16;
+		}
+		else
+		{
+			block_size = 32;
+		}
+		return remove_slab(ptr, slab, (void*)1, i, block_size, return_array[2]);
+	}
 	for(i = 1; i >= 0; i= i -1)
 	{ 
+		if(slab_lists[1].first_slab == 0)
+		{
+			i = 0;
+		}
 		prev_slab = 0;
 		if(i == 0)
 		{
@@ -750,43 +771,8 @@ bool free_slab(void* ptr)
 		{
 			if(ptr > slab && (char*)ptr < ((char*)slab + slab_size))
 			{
-				/*printf ("we got im'\n");
-				printf ("ptr: %p\n", ptr);
-				printf ("slab: %p\n", slab);*/
-				slab_index = ((uint64_t)ptr - ((uint64_t)slab + 16))/block_size;
-				/*printf ("slab_index: %lu\n", slab_index);*/ 		
-				bitmap = (uint64_t)mem_read(slab, 8);
-				temp_bitmap = 0x80000000 >> slab_index;
-				/*printf ("bitmap: %lx\n", bitmap);
-				printf ("temp_bitmap: %lx\n", temp_bitmap);*/
-				temp_bitmap = ~temp_bitmap;
-				bitmap = bitmap & temp_bitmap;	
-				/*printf ("not temp bitmap: %lx\n", temp_bitmap);
-				printf ("new bitmap: %lx\n", bitmap);*/
-				if(bitmap == 0)
-				{
-					temp_slab = slab_lists[i].first_slab;
-					other_temp_slab = slab_lists[abs(i-1)].first_slab;
-					next_slab = (void*)mem_read((char*)slab + 8, 8);
-					slab_lists[0].first_slab = 0;
-					slab_lists[1].first_slab = 0;
-					free((char*)slab);
-					slab_lists[i].first_slab = temp_slab;
-					slab_lists[abs(i-1)].first_slab = other_temp_slab;		
-					if(prev_slab == 0)
-					{
-						slab_lists[i].first_slab = next_slab;	
-					}
-					else
-					{
-						mem_write((char*)prev_slab + 8, (uint64_t)next_slab, 8);
-					}	
-					slab_lists[i].last_freed = slab_lists[i].first_slab;
-					return true;
-				}
-				mem_write(slab, bitmap, 8);
-				slab_lists[i].last_freed = slab;
-				return true;
+				add_slab_cache(slab);
+				return remove_slab(ptr, slab, prev_slab, i, block_size, 300);
 			}
 			else
 			{
@@ -805,6 +791,10 @@ size_t find_list(void* ptr)
 	size_t block_size;
 	for(i = 0; i < 2; i ++)
 	{	
+		if(slab_lists[0].first_slab == 0)
+		{
+			i = 1;
+		}
 		if(i == 0)
 		{
 			slab_size = 528;
@@ -826,4 +816,142 @@ size_t find_list(void* ptr)
 		}
 	}
 	return 0;
+}
+bool add_slab_cache(void* ptr)
+{
+	cache_adds ++;
+	void* heap_lo = mem_heap_lo();	
+	void* current_slab;
+	int j;
+	uint64_t clock = mem_read(mem_heap_lo(), 8);
+	clock ++;
+	uint64_t clock_reading;
+	uint64_t lowest_reading = (uint64_t)-1;
+	void* lowest_index = 0;
+	for(j = 8; j < 88; j += 8)
+	{
+		clock_reading = mem_read((char*) heap_lo + j, 8);
+		current_slab = (void*)mem_read((char*)heap_lo + j +80, 8);
+		if(current_slab == ptr)
+		{
+			mem_write((char*)heap_lo + j, clock, 8);
+			return true;
+		}
+		if(clock_reading < lowest_reading)
+		{
+			lowest_reading = clock_reading;
+			lowest_index = (char*)heap_lo + j;
+		}
+	}
+	mem_write(lowest_index, clock, 8);
+	mem_write((char*)lowest_index + 80, (uint64_t)ptr, 8);
+	mem_write(mem_heap_lo(), clock, 8);
+	return true;
+}
+bool search_slab_cache(void* ptr, uint64_t* return_array)
+{
+	void* heap_lo = mem_heap_lo();
+	uint64_t clock = mem_read(heap_lo, 8);	
+	clock ++;
+	int j;
+	void* slab;
+	size_t slab_size;
+	for(j = 88; j < 168; j += 8)
+	{
+		slab = (void*)mem_read((char*)heap_lo + j, 8);
+		if(slab != 0)
+		{
+			slab_size = mem_read((char*)slab - 8, 8);
+			if(ptr > slab && (char*)ptr < ((char*)slab-8) + slab_size)
+			{
+				return_array[0] = j;
+				if(slab_size <= 600)
+				{
+					return_array[1] = 0;
+				}
+				else
+				{
+					return_array[1] = 1;
+				}
+				return_array[2] = j;
+				mem_write((char*)heap_lo + j - 80, clock, 8);
+				mem_write(mem_heap_lo(), clock, 8);
+				return true;
+			}	
+		}		
+	}	
+	return false;
+}
+bool remove_slab(void* ptr, void* slab, void* prev_slab, int i, size_t block_size, uint64_t cache_index)
+{
+	uint64_t slab_index;
+	uint64_t bitmap;
+	uint64_t temp_bitmap;
+	void* temp_slab;
+	void* other_temp_slab;
+	void* next_slab;
+	void* loop_slab;
+	slab_index = ((uint64_t)ptr - ((uint64_t)slab + 16))/block_size;
+	bitmap = (uint64_t)mem_read(slab, 8);
+	temp_bitmap = 0x80000000 >> slab_index;
+	temp_bitmap = ~temp_bitmap;
+	bitmap = bitmap & temp_bitmap;	
+	if(bitmap == 0)
+	{
+		if(prev_slab == (void*)1)
+		{
+			prev_slab = 0;
+			loop_slab = slab_lists[i].first_slab;
+			while(loop_slab != 0)
+			{
+				if(loop_slab == slab)
+				{
+					break;
+				}
+				prev_slab = loop_slab;
+				loop_slab = (void*)mem_read((char*)loop_slab + 8, 8);
+			}		
+		}
+		if(cache_index != 300)
+		{
+			remove_from_cache(cache_index);
+		}
+		temp_slab = slab_lists[i].first_slab;
+		other_temp_slab = slab_lists[abs(i-1)].first_slab;
+		next_slab = (void*)mem_read((char*)slab + 8, 8);
+		slab_lists[0].first_slab = 0;
+		slab_lists[1].first_slab = 0;
+		free((char*)slab);
+		slab_lists[i].first_slab = temp_slab;
+		slab_lists[abs(i-1)].first_slab = other_temp_slab;		
+		if(prev_slab == 0)
+		{
+			slab_lists[i].first_slab = next_slab;	
+		}
+		else
+		{
+			mem_write((char*)prev_slab + 8, (uint64_t)next_slab, 8);
+		}	
+		slab_lists[i].last_freed = slab_lists[i].first_slab;
+		return true;
+	}
+	mem_write(slab, bitmap, 8);
+	slab_lists[i].last_freed = slab;
+	return true;
+}
+void remove_from_cache(uint64_t cache_index)
+{	
+	void* heap_lo = mem_heap_lo();
+	mem_write((char*)heap_lo + cache_index, 0, 8);
+	mem_write((char*)heap_lo + cache_index - 80, 0, 8);
+}
+void print_cache()
+{
+	uint64_t index = (uint64_t)mem_heap_lo() + 88;
+	uint64_t i;
+	printf ("cache:\n");
+	for(i = index; i < index + 80; i += 8)
+	{
+		printf ("%p\n", (void*)mem_read((void*)i, 8));
+	}
 }
