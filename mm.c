@@ -278,6 +278,8 @@ bool mm_checkheap(int lineno)
 	int is_free = 1;
 	/* checks if the previous block was free, used to see if coalescing occurs when it should */
 	int prev_is_free = 1;
+	int c_list = NUM_FREE_LISTS -1;
+	int c_list_check = NUM_FREE_LISTS -1;
 	current_block = starting_address; 
 	dbg_printf("Entering while loop\n");
 	/* loop through the entire heap block by block */
@@ -294,24 +296,42 @@ bool mm_checkheap(int lineno)
 			free_size += current_block_size;
 			for(i = 0; i < NUM_FREE_LISTS; i ++)
 			{
+				c_list = NUM_FREE_LISTS -1;
+				c_list_check = NUM_FREE_LISTS -1;
 				free_block = root_list[i].first_block;
 				while(free_block != 0)
 				{
 					if(free_block == current_block)
 					{
+						c_list = i;
 						i = 100;
 						break;
 					}
 					free_block = (void*)mem_read((char*)free_block + 8, 8);
 				}
 				if(i == 100){
+					for(i = 0; i < NUM_FREE_LISTS -1; i ++)
+					{
+						if((current_block_size &-2) <= root_list[i].max_size)
+						{
+							c_list_check = i;
+							break;
+						}
+					}
+					if(c_list_check != c_list)
+					{
+						dbg_printf("block in wrong free list\n");
+						dbg_printf("c_list: %d\n", c_list);
+						dbg_printf("check_c_list: %d\n", c_list_check);
+						dbg_printf("block_size: %zu\n", current_block_size &-2);
+					}
+					i = 100;
 					break;
 				}
 			}
 			if(i != 100)
 			{
 				printf("Error: a free block: %p wasn't in the free list\n", current_block);			
-				assert(1 == -1);
 			}
 		}
 		else
