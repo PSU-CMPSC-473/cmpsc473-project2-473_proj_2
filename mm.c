@@ -292,15 +292,19 @@ bool mm_checkheap(int lineno)
 		/* when a free block is found we loop through the free lists to see if it is in one of them*/
 		if(is_free == 0)
 		{
+			/* increment the free block counter*/
 			num_free_blocks ++;
 			free_size += current_block_size;
+			/* begin looping through the free list */
 			for(i = 0; i < NUM_FREE_LISTS; i ++)
 			{
+				/* reset the c_list values so they are not differnet from the last time we did this search */
 				c_list = NUM_FREE_LISTS -1;
 				c_list_check = NUM_FREE_LISTS -1;
 				free_block = root_list[i].first_block;
 				while(free_block != 0)
 				{
+					/* when we find the block in one of the lists we break and store the list it was in in c_list*/
 					if(free_block == current_block)
 					{
 						c_list = i;
@@ -310,6 +314,7 @@ bool mm_checkheap(int lineno)
 					free_block = (void*)mem_read((char*)free_block + 8, 8);
 				}
 				if(i == 100){
+	`				/* now we loop through the free lists and see which one the block should fall into based on its size */
 					for(i = 0; i < NUM_FREE_LISTS -1; i ++)
 					{
 						if((current_block_size &-2) <= root_list[i].max_size)
@@ -318,6 +323,7 @@ bool mm_checkheap(int lineno)
 							break;
 						}
 					}
+					/* compare the list it was found in with the list we expect it to be in*/
 					if(c_list_check != c_list)
 					{
 						dbg_printf("block in wrong free list\n");
