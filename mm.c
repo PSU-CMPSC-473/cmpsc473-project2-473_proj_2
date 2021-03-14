@@ -168,10 +168,15 @@ void* malloc(size_t size)
 	}*/
 	void * block;
 	block = find_free_block(size);
+<<<<<<< HEAD
 	///printf ("\n\n\n");
 	#ifdef DEBUG
 	mm_checkheap(173);
 	#endif
+=======
+	/*printf ("\n\n\n");
+	mm_checkheap(149);*/	
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
 	/*end_time = clock()/CLOCKS_PER_SEC;
 	total_m_time += (end_time - start_time);
 	average_malloc_time = (float)total_m_time / (float)mallocs;
@@ -231,7 +236,11 @@ void free(void* ptr)
 		mem_write((char*) old_first_block + old_first_block_size - 16, (uint64_t)root_list[c_list].first_block, 8);	
 		mem_write((char*) block_starting_address + new_first_block_size - 16, (uint64_t)0,8);
 	}
+<<<<<<< HEAD
 	//mm_checkheap(194);	
+=======
+	/*mm_checkheap(194);*/	
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
 	return;
 }
 
@@ -359,7 +368,11 @@ bool mm_checkheap(int lineno)
 			}
 			if(i != 100)
 			{
+<<<<<<< HEAD
 				printf("Error: a free block: %p wasn't in the free list\n", current_block);			
+=======
+				printf ("a free block: %p wasn't in the free list\n", current_block);			
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
 				assert(1 == -1);
 			}
 		}
@@ -382,11 +395,19 @@ bool mm_checkheap(int lineno)
 		}
 		current_block = (char*)current_block + (current_block_size & -2);
 	}
+<<<<<<< HEAD
 	// dbg_printf ("total blocks: %d\n", num_blocks);
 	// dbg_printf ("free blocks: %d\n", num_free_blocks);
 	// dbg_printf ("free bytes: %zu\n", free_size);
 	// dbg_printf ("allocated bytes: %zu\n", allocated_size);
 	// dbg_printf ("utilization: %5.2f\n",100.0 * (double)allocated_size /(free_size + allocated_size));
+=======
+	/*printf ("total blocks: %d\n", num_blocks);
+	printf ("free blocks: %d\n", num_free_blocks);
+	printf ("free bytes: %zu\n", free_size);
+	printf ("allocated bytes: %zu\n", allocated_size);
+	printf ("utilization: %5.2f\n",100.0 * (double)allocated_size /(free_size + allocated_size));*/
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
     	return true;
     // /* IMPLEMENT THIS */
 #endif /* DEBUG */
@@ -527,9 +548,13 @@ void remove_from_free_list(void* block, size_t size, size_t requested_size, int 
 }
 size_t coalesce(void * ptr, size_t size)
 {
+<<<<<<< HEAD
 	#ifdef DEBUG
 	mm_checkheap(531);
 	#endif
+=======
+	
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
 	void * next_block_address = (char*)ptr + (size&-2);
 	void * next_block_back_ptr;
 	void * next_block_fwrd_ptr;
@@ -846,4 +871,7 @@ size_t find_list(void* ptr)
 	}
 	return 0;
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 810585a0e1841aa238df68c233fa2e3d261d8b7c
