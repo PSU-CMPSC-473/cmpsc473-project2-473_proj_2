@@ -1,10 +1,9 @@
 /*
  * mm.c
  *
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- * Also, read malloclab.pdf carefully and in its entirety before beginning.
+ * This is an implementation for a dynamic memory allocator. Free blocks are stored in 8 segregated free lists. Free blocks are coalesced 
+ * when possible, and allocated blocks are split if there is extra space. Blocks are made up of a header, a footer, and at least a 16 byte
+ * payload. The payload area is used to store pointers for the free linked lists when the block is free.
  *
  * Name: Nahom Regassa, Julien Rovera
  *
@@ -327,7 +326,7 @@ bool mm_checkheap(int lineno)
 					if(c_list_check != c_list)
 					{
 						dbg_printf("block in wrong free list\n");
-						dbg_printf("c_list: %d\n", c_list);
+						dbg_prinTF("c_list: %d\n", c_list);
 						dbg_printf("check_c_list: %d\n", c_list_check);
 						dbg_printf("block_size: %zu\n", current_block_size &-2);
 					}
